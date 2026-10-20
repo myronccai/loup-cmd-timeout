@@ -1,0 +1,59 @@
+@mode(host.dual)
+
+from debug.assert import (expect, expectEq);
+from commands.timeout import (digits, pad_left, countdown_line, seconds_left, ns_until_change,
+    countdown_text, run_timeout, NS_PER_SECOND, MSG_WAIT_FOREVER);
+
+func same(got: string, want: string, what: string): void {
+    expect(got == want, what + ": got '" + got + "', want '" + want + "'");
+}
+
+func test_digits(): void {
+    expectEq(digits(0), 1, "0");
+    expectEq(digits(9), 1, "9");
+    expectEq(digits(10), 2, "10");
+    expectEq(digits(99999), 5, "99999");
+}
+
+func test_pad_left(): void {
+    same(pad_left("9", 2), " 9", "one space");
+    same(pad_left("10", 2), "10", "full width");
+    same(pad_left("123", 2), "123", "wider than the width");
+}
+
+func test_countdown_line(): void {
+    same(countdown_line(5, 1), "Waiting for 5 seconds, press CTRL+C to quit ...", "one digit");
+    same(countdown_line(9, 2), "Waiting for  9 seconds, press CTRL+C to quit ...", "padded");
+    expectEq(countdown_line(0, 5).len(), countdown_line(99999, 5).len(), "same length");
+    same(MSG_WAIT_FOREVER, "Press CTRL+C to quit ...", "-1");
+}
+
+func test_seconds_left_rounds_up(): void {
+    expectEq(seconds_left(0), 0, "none left");
+    expectEq(seconds_left(-5), 0, "overdue");
+    expectEq(seconds_left(1), 1, "a nanosecond");
+    expectEq(seconds_left(NS_PER_SECOND), 1, "exactly one second");
+    expectEq(seconds_left(NS_PER_SECOND + 1), 2, "just over one second");
+    expectEq(seconds_left(10 * NS_PER_SECOND), 10, "ten seconds");
+}
+
+func test_ns_until_change(): void {
+    expectEq(ns_until_change(10 * NS_PER_SECOND, 10), NS_PER_SECOND, "a full second");
+    expectEq(ns_until_change(2500000000, 3), 500000000, "half a second");
+    expectEq(ns_until_change(1, 1), 1, "last nanosecond");
+}
+
+func test_countdown_text(): void {
+    same(countdown_text(0), "\nWaiting for 0 seconds, press CTRL+C to quit ...\n", "zero");
+    same(countdown_text(2),
+        "\nWaiting for 2 seconds, press CTRL+C to quit ..."
+        + "\rWaiting for 1 seconds, press CTRL+C to quit ..."
+        + "\rWaiting for 0 seconds, press CTRL+C to quit ...\n", "two");
+    let ten = countdown_text(10);
+    expect(ten.startsWith("\nWaiting for 10 seconds"), "ten starts at 10");
+    expect(ten.index_of("\rWaiting for  9 seconds") > 0, "ten pads 9");
+}
+
+func test_zero_returns_at_once(): void {
+    expectEq(run_timeout(0), 0, "0 seconds");
+}

@@ -4,22 +4,30 @@
 # normal output and error messages.
 
 from debug.assert import (expectEq);
-from appinfo import (EXIT_OK, EXIT_USAGE);
+from appinfo import (EXIT_OK, EXIT_FAILURE);
 from cli.app import (run);
 
 func test_version_succeeds(): void {
     expectEq(run(["--version"]), EXIT_OK, "--version");
 }
 
-func test_hello_succeeds(): void {
-    expectEq(run(["hello", "tests"]), EXIT_OK, "hello NAME");
+func test_help_succeeds(): void {
+    expectEq(run(["/?"]), EXIT_OK, "/?");
 }
 
-func test_unknown_command_is_usage_error(): void {
-    expectEq(run(["bogus"]), EXIT_USAGE, "unknown command");
+func test_zero_seconds_succeeds(): void {
+    expectEq(run(["/T", "0", "/NOBREAK"]), EXIT_OK, "/T 0");
 }
 
-func test_missing_command_is_usage_error(): void {
+func test_one_second_succeeds(): void {
+    expectEq(run(["1"]), EXIT_OK, "1");
+}
+
+func test_usage_errors(): void {
     let none: list[string] = [];
-    expectEq(run(none), EXIT_USAGE, "no command");
+    expectEq(run(none), EXIT_FAILURE, "no value");
+    expectEq(run(["/T"]), EXIT_FAILURE, "/T without a value");
+    expectEq(run(["/bogus"]), EXIT_FAILURE, "unknown option");
+    expectEq(run(["abc"]), EXIT_FAILURE, "not a number");
+    expectEq(run(["-2"]), EXIT_FAILURE, "out of range");
 }

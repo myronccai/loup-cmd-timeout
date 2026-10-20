@@ -1,28 +1,25 @@
 @mode(host.dual)
 
-from appinfo import (APP_NAME, APP_VERSION, APP_SUMMARY);
-from cli.args import (DEFAULT_GREETING);
+from appinfo import (APP_NAME, APP_VERSION);
 
+# The text of `timeout /?`: a short summary of this recreation's syntax and
+# switches.
 pub func usage(): string {
     let lines = [
-        i"usage: {$ APP_NAME $} [OPTIONS] COMMAND [ARGS...]",
+        "Pause for a number of seconds, showing how many are left.",
         "",
-        APP_SUMMARY,
+        "TIMEOUT [/T] seconds [/NOBREAK]",
         "",
-        "Commands:",
-        "  hello [NAME]          Print a greeting (NAME defaults to 'world')",
-        "  help                  Show this help",
-        "",
-        "Options:",
-        i"  -g, --greeting TEXT   Greeting used by 'hello' (default: {$ DEFAULT_GREETING $})",
-        "      --shout           Print the greeting in upper case",
-        "  -v, --verbose         Print diagnostic messages to stderr",
-        "  -h, --help            Show this help and exit",
-        "  -V, --version         Show the version and exit",
+        "  /T seconds  How long to wait, from -1 to 99999. The /T may be left",
+        "              out: TIMEOUT 10 means TIMEOUT /T 10. With -1 the wait",
+        "              lasts until CTRL+C is pressed.",
+        "  /NOBREAK    Accepted for compatibility. This version never ends the",
+        "              wait on a key press, only on CTRL+C.",
+        "  /?          Show this summary.",
     ];
     return lines.join("\n");
 }
 
 pub func version_line(): string {
-    return i"{$ APP_NAME $} {$ APP_VERSION $}";
+    return i"{$ APP_NAME $} (loup-cmd-{$ APP_NAME $}) {$ APP_VERSION $}";
 }

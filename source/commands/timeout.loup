@@ -1,0 +1,118 @@
+@mode(host.dual)
+
+# timeout: waits for a number of seconds and shows how many are left on one
+# line that is rewritten in place (a carriage return goes back to its start).
+# The countdown follows the monotonic clock, so it neither drifts nor jumps
+# when the wall clock is changed: each pass sleeps until the shown number
+# should next change, then redraws the line.
+#
+# A key press does not end the wait (Loup 1.26.0 can only read standard
+# input as a whole, roadmap constraint T2), so every wait behaves like
+# /NOBREAK: CTRL+C (SIGINT) is the only way to stop early.
+
+from appinfo import (EXIT_OK);
+from cli.args import (WAIT_FOREVER);
+from core.time import (Duration);
+from system.time import (monotonicNs, sleepNs);
+
+pub const NS_PER_SECOND: int = 1000000000;
+
+# What `/T -1` shows while it waits.
+pub const MSG_WAIT_FOREVER: string = "Press CTRL+C to quit ...";
+
+# The number of decimal digits of a count of seconds (0 to 99999).
+pub func digits(n: int): int {
+    var count = 1;
+    var rest = n;
+    while (rest >= 10) {
+        rest = rest / 10;
+        count += 1;
+    }
+    return count;
+}
+
+# `text` right-aligned in `width` columns.
+pub func pad_left(text: string, width: int): string {
+    var spaces = "";
+    var k = text.len();
+    while (k < width) {
+        spaces += " ";
+        k += 1;
+    }
+    return spaces + text;
+}
+
+# The countdown line for `seconds` left. The number is right-aligned to the
+# width of the starting value, so every redraw has the same length and
+# fully covers the previous one.
+pub func countdown_line(seconds: int, width: int): string {
+    return "Waiting for " + pad_left(str(seconds), width) + " seconds, press CTRL+C to quit ...";
+}
+
+# The whole seconds still to wait, rounded up: what the countdown shows when
+# `left_ns` nanoseconds remain.
+pub func seconds_left(left_ns: int): int {
+    if (left_ns <= 0) {
+        return 0;
+    }
+    return (left_ns + NS_PER_SECOND - 1) / NS_PER_SECOND;
+}
+
+# How long to sleep before the shown number `shown` must change, given
+# `left_ns` nanoseconds still to wait.
+pub func ns_until_change(left_ns: int, shown: int): int {
+    return left_ns - (shown - 1) * NS_PER_SECOND;
+}
+
+# Everything a wait of `seconds` prints, if no redraw is ever skipped: the
+# blank line, the first line, a `\r` and the next line for every second,
+# and the final newline. (The program prints it piece by piece.)
+pub func countdown_text(seconds: int): string {
+    let width = digits(seconds);
+    var parts: list[string] = ["\n", countdown_line(seconds, width)];
+    var n = seconds - 1;
+    while (n >= 0) {
+        parts.push("\r");
+        parts.push(countdown_line(n, width));
+        n -= 1;
+    }
+    parts.push("\n");
+    return parts.join("");
+}
+
+# Waits until interrupted (`/T -1`).
+func wait_forever(): void {
+    print("\n" + MSG_WAIT_FOREVER);
+    var waiting = true;
+    while (waiting) {
+        sleepNs(3600 * NS_PER_SECOND);
+    }
+}
+
+# Waits `seconds` (0 to 99999, or -1 for ever) with a live countdown on
+# standard output, and returns the exit status.
+pub func run_timeout(seconds: int): int {
+    if (seconds == WAIT_FOREVER) {
+        wait_forever();
+        return EXIT_OK;
+    }
+    let width = digits(seconds);
+    let total = Duration.ofSeconds(seconds);
+    let start = monotonicNs();
+    print("\n" + countdown_line(seconds, width));
+    var shown = seconds;
+    while (shown > 0) {
+        let left = total - Duration.ofNanos(monotonicNs() - start);
+        let left_ns = left.totalNanoseconds();
+        let now_showing = seconds_left(left_ns);
+        if (now_showing < shown) {
+            shown = now_showing;
+            print("\r" + countdown_line(shown, width));
+        }
+        if (shown > 0) {
+            sleepNs(ns_until_change(left_ns, shown));
+        }
+    }
+    println("");
+    return EXIT_OK;
+}

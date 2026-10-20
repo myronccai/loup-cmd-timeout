@@ -1,98 +1,140 @@
 @mode(host.dual)
 
-# Command-line parsing. Loup 1.26 has no CLI library, so arguments are
-# parsed by hand into an Options value.
-#
-# Grammar: [OPTIONS] COMMAND [OPERANDS...]
-#   Options may appear anywhere before `--`; everything after `--` is an
-#   operand. Value options accept `--name VALUE` and `--name=VALUE`.
+# Command-line parsing for timeout, with the shared Windows switch parser
+# (win/switches.loup). The wait may be given as `/T 10`, `/T:10` or just
+# `10`; `-1` is a value (wait until CTRL+C), not a switch. Usage errors use
+# the wording of Windows' command-line tools, each followed by
+# `Type "TIMEOUT /?" for usage.`; an out-of-range value has its own message.
 
-pub const DEFAULT_GREETING: string = "Hello";
+from win.switches import (SwitchSpec, flag, required_value, parse_switches, parse_int_value);
+
+# The range timeout accepts; -1 waits until the program is interrupted.
+pub const MIN_SECONDS: int = -1;
+pub const MAX_SECONDS: int = 99999;
+pub const WAIT_FOREVER: int = -1;
+
+pub const MSG_TYPE_HELP: string = "Type \"TIMEOUT /?\" for usage.";
+pub const MSG_INVALID_VALUE: string = "ERROR: Invalid value for timeout (/T) specified. Valid range is -1 to 99999.";
 
 pub struct Options {
-    pub command: string;
-    pub operands: list[string];
     pub help: bool;
     pub version: bool;
-    pub verbose: bool;
-    pub shout: bool;
-    pub greeting: string;
+    pub seconds: int;     # -1 to 99999
+    pub nobreak: bool;    # /NOBREAK (accepted; every wait ignores keys)
 }
 
-pub func parse_args(argv: list[string]): Result[Options, string] {
-    var command = "";
-    var operands: list[string] = [];
-    var help = false;
-    var version = false;
-    var verbose = false;
-    var shout = false;
-    var greeting = DEFAULT_GREETING;
-    var only_operands = false;
+# The switches timeout declares.
+pub func timeout_switches(): list[SwitchSpec] {
+    return [required_value("T"), flag("NOBREAK")];
+}
 
+# Options are built here only: a struct constructed in several modules is
+# laid out differently by native builds.
+func make_options(help: bool, version: bool, seconds: int, nobreak: bool): Options {
+    return Options(help = help, version = version, seconds = seconds, nobreak = nobreak);
+}
+
+# A usage error as timeout prints it: the message, then the pointer to /?.
+pub func syntax_error(detail: string): string {
+    return "ERROR: " + detail + "\n" + MSG_TYPE_HELP;
+}
+
+func repeated(text: string): string {
+    return syntax_error("Invalid syntax. '" + text + "' option is not allowed more than '1' time(s).");
+}
+
+# Whether an operand is an unknown option rather than a value: it starts
+# with `/` or `-` and is not a number (`-1` is a value, `-x` and `/x` are not).
+pub func looks_like_option(arg: string): bool {
+    if (arg.len() < 2 or !(arg.startsWith("/") or arg.startsWith("-"))) {
+        return false;
+    }
+    let n = match parse_int_value(arg) {
+        Some(v) => 1,
+        None => 0,
+    };
+    return n == 0;
+}
+
+# The number of arguments after the first `--` (all of them operands).
+func count_after_double_dash(argv: list[string]): int {
     var i = 0;
     while (i < argv.len()) {
-        let arg = argv[i];
+        if (argv[i] == "--") {
+            return argv.len() - i - 1;
+        }
         i += 1;
+    }
+    return 0;
+}
 
-        if (only_operands or arg == "-" or !arg.startsWith("-")) {
-            if (command.is_empty()) {
-                command = arg;
-            } else {
-                operands.push(arg);
+# The seconds a value stands for, or None when it is not a whole number in
+# the accepted range.
+pub func parse_seconds(text: string): Option[int] {
+    let n = match parse_int_value(text) {
+        Some(v) => v,
+        None => MIN_SECONDS - 1,
+    };
+    if (n < MIN_SECONDS or n > MAX_SECONDS) {
+        return None;
+    }
+    return Some(n);
+}
+
+# The statement form of `match` (arms that return) is deliberate: a match
+# expression whose arms build new values returns freed memory natively.
+pub func parse_args(argv: list[string]): Result[Options, string] {
+    let parsed = match parse_switches(argv, timeout_switches()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(syntax_error("Invalid syntax. Value expected for '" + e.text + "'."));
+        },
+    };
+    if (parsed.help or parsed.version) {
+        return Ok(make_options(parsed.help, parsed.version, 0, false));
+    }
+
+    var values: list[string] = [];
+    var t_seen = false;
+    var nobreak = false;
+    for (sw in parsed.switches) {
+        if (sw.name == "T") {
+            if (t_seen) {
+                return Err(repeated(sw.text));
             }
-            continue;
-        }
-        if (arg == "--") {
-            only_operands = true;
-            continue;
-        }
-
-        # Split `--name=value` into its name and inline value.
-        var name = arg;
-        var inline_value: Option[string] = None;
-        if (arg.startsWith("--") and arg.contains("=")) {
-            let parts = arg.split("=");
-            name = parts[0];
-            inline_value = Some(parts.slice(1).join("="));
-        }
-
-        if (name == "-g" or name == "--greeting") {
-            match inline_value {
-                Some(v) => { greeting = v; },
-                None => {
-                    if (i >= argv.len()) {
-                        return Err(i"option '{$ name $}' requires a value");
-                    }
-                    greeting = argv[i];
-                    i += 1;
-                },
+            t_seen = true;
+            values.push(sw.value);
+        } else if (sw.name == "NOBREAK") {
+            if (nobreak) {
+                return Err(repeated(sw.text));
             }
-            continue;
-        }
-
-        if (inline_value.is_some()) {
-            return Err(i"option '{$ name $}' does not take a value");
-        }
-        if (name == "-h" or name == "--help") {
-            help = true;
-        } else if (name == "-V" or name == "--version") {
-            version = true;
-        } else if (name == "-v" or name == "--verbose") {
-            verbose = true;
-        } else if (name == "--shout") {
-            shout = true;
-        } else {
-            return Err(i"unknown option '{$ name $}'");
+            nobreak = true;
         }
     }
 
-    return Ok(Options(
-        command = command,
-        operands = operands,
-        help = help,
-        version = version,
-        verbose = verbose,
-        shout = shout,
-        greeting = greeting,
-    ));
+    # Operands before `--` that look like options are errors; after it,
+    # everything is a value.
+    let checked = parsed.operands.len() - count_after_double_dash(argv);
+    var i = 0;
+    for (op in parsed.operands) {
+        if (i < checked and looks_like_option(op)) {
+            return Err(syntax_error("Invalid argument/option - '" + op + "'."));
+        }
+        values.push(op);
+        i += 1;
+    }
+
+    if (values.len() == 0) {
+        return Err(syntax_error("Invalid syntax. Value expected for '/T'."));
+    }
+    if (values.len() > 1) {
+        return Err(syntax_error("Invalid syntax. Default option is not allowed more than '1' time(s)."));
+    }
+    let seconds = match parse_seconds(values[0]) {
+        Some(n) => n,
+        None => {
+            return Err(MSG_INVALID_VALUE);
+        },
+    };
+    return Ok(make_options(false, false, seconds, nobreak));
 }

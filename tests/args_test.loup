@@ -1,64 +1,89 @@
 @mode(host.dual)
 
 from debug.assert import (expect, expectEq);
-from cli.args import (parse_args, DEFAULT_GREETING);
+from cli.args import (parse_args, timeout_switches, looks_like_option, parse_seconds,
+    syntax_error, MSG_INVALID_VALUE, MSG_TYPE_HELP);
 
-func test_no_arguments(): void {
-    let none: list[string] = [];
-    let opts = parse_args(none).unwrap();
-    expectEq(opts.command, "", "no command");
-    expectEq(opts.operands.len(), 0, "no operands");
-    expectEq(opts.greeting, DEFAULT_GREETING, "default greeting");
-    expect(!opts.help and !opts.version and !opts.verbose and !opts.shout, "no flags set");
+func same(got: string, want: string, what: string): void {
+    expect(got == want, what + ": got '" + got + "', want '" + want + "'");
 }
 
-func test_command_and_operands(): void {
-    let opts = parse_args(["hello", "Ann"]).unwrap();
-    expectEq(opts.command, "hello", "command");
-    expectEq(opts.operands.len(), 1, "one operand");
-    expectEq(opts.operands[0], "Ann", "operand");
+func seconds_of(argv: list[string]): int {
+    return parse_args(argv).unwrap().seconds;
 }
 
-func test_flags_anywhere(): void {
-    let opts = parse_args(["-v", "hello", "--shout", "Ann"]).unwrap();
-    expect(opts.verbose, "verbose");
-    expect(opts.shout, "shout");
-    expectEq(opts.command, "hello", "command");
-    expectEq(opts.operands[0], "Ann", "operand");
+func test_declared_switches(): void {
+    expectEq(timeout_switches().len(), 2, "T NOBREAK");
+}
+
+func test_value_forms(): void {
+    expectEq(seconds_of(["10"]), 10, "bare value");
+    expectEq(seconds_of(["/T", "10"]), 10, "/T 10");
+    expectEq(seconds_of(["/t:7"]), 7, "/t:7");
+    expectEq(seconds_of(["-T=3"]), 3, "-T=3");
+    expectEq(seconds_of(["/T", "-1"]), -1, "/T -1");
+    expectEq(seconds_of(["-1"]), -1, "-1 is a value, not a switch");
+    expectEq(seconds_of(["0"]), 0, "zero");
+    expectEq(seconds_of(["99999"]), 99999, "largest");
+    expectEq(seconds_of(["+5"]), 5, "plus sign");
+    expectEq(seconds_of(["--", "4"]), 4, "after --");
+}
+
+func test_nobreak(): void {
+    let opts = parse_args(["/NOBREAK", "/T", "5"]).unwrap();
+    expect(opts.nobreak, "/NOBREAK");
+    expectEq(opts.seconds, 5, "with /NOBREAK first");
+    expect(parse_args(["5", "-nobreak"]).unwrap().nobreak, "-nobreak");
+    expect(!parse_args(["5"]).unwrap().nobreak, "no /NOBREAK");
 }
 
 func test_help_and_version(): void {
+    expect(parse_args(["/?"]).unwrap().help, "/?");
+    expect(parse_args(["5", "-?"]).unwrap().help, "-? with a value");
     expect(parse_args(["--help"]).unwrap().help, "--help");
-    expect(parse_args(["-h"]).unwrap().help, "-h");
     expect(parse_args(["--version"]).unwrap().version, "--version");
-    expect(parse_args(["-V"]).unwrap().version, "-V");
+    expect(!parse_args(["--", "/?"]).is_ok(), "/? after -- is a value");
 }
 
-func test_value_option_forms(): void {
-    expectEq(parse_args(["-g", "Hi"]).unwrap().greeting, "Hi", "-g VALUE");
-    expectEq(parse_args(["--greeting", "Hi"]).unwrap().greeting, "Hi", "--greeting VALUE");
-    expectEq(parse_args(["--greeting=a=b"]).unwrap().greeting, "a=b", "--greeting=VALUE keeps '='");
+func test_looks_like_option(): void {
+    expect(looks_like_option("/x"), "/x");
+    expect(looks_like_option("-x"), "-x");
+    expect(looks_like_option("/5"), "/5");
+    expect(!looks_like_option("-1"), "-1");
+    expect(!looks_like_option("-"), "-");
+    expect(!looks_like_option("abc"), "abc");
 }
 
-func test_double_dash_ends_options(): void {
-    let opts = parse_args(["hello", "--", "--shout"]).unwrap();
-    expect(!opts.shout, "--shout after -- is an operand");
-    expectEq(opts.operands[0], "--shout", "operand");
+func test_parse_seconds(): void {
+    expect(parse_seconds("-2").is_none(), "below the range");
+    expect(parse_seconds("100000").is_none(), "above the range");
+    expect(parse_seconds("1.5").is_none(), "not whole");
+    expect(parse_seconds("").is_none(), "empty");
+    expectEq(parse_seconds("007").unwrap(), 7, "leading zeros");
 }
 
-func test_lone_dash_is_operand(): void {
-    let opts = parse_args(["hello", "-"]).unwrap();
-    expectEq(opts.operands[0], "-", "operand");
-}
-
-func test_unknown_option(): void {
-    expectEq(parse_args(["--nope"]).unwrap_err(), "unknown option '--nope'", "error message");
-}
-
-func test_missing_value(): void {
-    expectEq(parse_args(["-g"]).unwrap_err(), "option '-g' requires a value", "error message");
-}
-
-func test_flag_with_value(): void {
-    expectEq(parse_args(["--shout=1"]).unwrap_err(), "option '--shout' does not take a value", "error message");
+func test_errors(): void {
+    let none: list[string] = [];
+    same(parse_args(none).unwrap_err(),
+        "ERROR: Invalid syntax. Value expected for '/T'.\n" + MSG_TYPE_HELP, "no value");
+    same(parse_args(["/t"]).unwrap_err(),
+        "ERROR: Invalid syntax. Value expected for '/t'.\n" + MSG_TYPE_HELP, "/t without a value");
+    same(parse_args(["/T", "/NOBREAK"]).unwrap_err(),
+        "ERROR: Invalid syntax. Value expected for '/T'.\n" + MSG_TYPE_HELP, "/T followed by a switch");
+    same(parse_args(["/x"]).unwrap_err(),
+        "ERROR: Invalid argument/option - '/x'.\n" + MSG_TYPE_HELP, "unknown option");
+    same(parse_args(["5", "6"]).unwrap_err(),
+        "ERROR: Invalid syntax. Default option is not allowed more than '1' time(s).\n" + MSG_TYPE_HELP,
+        "two values");
+    same(parse_args(["/T", "5", "6"]).unwrap_err(),
+        "ERROR: Invalid syntax. Default option is not allowed more than '1' time(s).\n" + MSG_TYPE_HELP,
+        "/T and a value");
+    same(parse_args(["/T", "5", "/t", "6"]).unwrap_err(),
+        syntax_error("Invalid syntax. '/t' option is not allowed more than '1' time(s)."), "/T twice");
+    same(parse_args(["/nobreak", "5", "-NOBREAK"]).unwrap_err(),
+        syntax_error("Invalid syntax. '-NOBREAK' option is not allowed more than '1' time(s)."),
+        "/NOBREAK twice");
+    same(parse_args(["abc"]).unwrap_err(), MSG_INVALID_VALUE, "not a number");
+    same(parse_args(["100000"]).unwrap_err(), MSG_INVALID_VALUE, "too large");
+    same(parse_args(["--", "-x"]).unwrap_err(), MSG_INVALID_VALUE, "-x after --");
 }
