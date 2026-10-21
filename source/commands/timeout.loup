@@ -17,48 +17,38 @@
 # as a whole, roadmap constraint T2), so every wait behaves like /NOBREAK:
 # CTRL+C (SIGINT) is the only way to stop early.
 #
-# Structure: the text of the countdown (digits, pad_left, countdown_line, and
+# Structure: the text of the countdown (digits, countdown_line, and
 # countdown_text, the whole output at once for the tests); the clock
 # arithmetic (seconds_left, ns_until_change); then the two waits,
 # wait_forever() for `/T -1` and run_timeout().
 
 from appinfo import (EXIT_OK);
 from cli.args import (WAIT_FOREVER);
+from core.string_utils import (padLeft);
 from core.time import (Duration);
 from system.time import (monotonicNs, sleepNs);
 
-pub const NS_PER_SECOND: int = 1000000000;
+pub const NS_PER_SECOND: int = 1_000_000_000;
 
 # What `/T -1` shows while it waits.
 pub const MSG_WAIT_FOREVER: string = "Press CTRL+C to quit ...";
 
 # The number of decimal digits of a count of seconds (0 to 99999).
 pub func digits(n: int): int {
-    var count = 1;
+    var count = 0;
     var rest = n;
-    while (rest >= 10) {
-        rest = rest / 10;
+    do {
         count += 1;
-    }
+        rest //= 10;
+    } while (rest > 0);
     return count;
-}
-
-# `text` right-aligned in `width` columns.
-pub func pad_left(text: string, width: int): string {
-    var spaces = "";
-    var k = text.len();
-    while (k < width) {
-        spaces += " ";
-        k += 1;
-    }
-    return spaces + text;
 }
 
 # The countdown line for `seconds` left. The number is right-aligned to the
 # width of the starting value, so every redraw has the same length and
 # fully covers the previous one.
 pub func countdown_line(seconds: int, width: int): string {
-    return "Waiting for " + pad_left(str(seconds), width) + " seconds, press CTRL+C to quit ...";
+    return "Waiting for " + padLeft(str(seconds), width, " ") + " seconds, press CTRL+C to quit ...";
 }
 
 # The whole seconds still to wait, rounded up: what the countdown shows when
@@ -94,10 +84,12 @@ pub func countdown_text(seconds: int): string {
 
 # Waits until interrupted (`/T -1`).
 func wait_forever(): void {
+    # Sleep an hour at a time: only a signal ends this wait.
+    const NAP_NS: int = 3_600_000_000_000;
     print("\n" + MSG_WAIT_FOREVER);
     var waiting = true;
     while (waiting) {
-        sleepNs(3600 * NS_PER_SECOND);
+        sleepNs(NAP_NS);
     }
 }
 

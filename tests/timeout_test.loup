@@ -1,15 +1,15 @@
 @mode(host.dual)
 
 # Unit tests for timeout's countdown (commands/timeout.loup): the line and its
-# padding, rounding the time left up to whole seconds, how long to sleep, the
-# whole text of a short countdown, and a zero wait.
+# padding (never cut), rounding the time left up to whole seconds, how long to
+# sleep, the whole text of a short countdown, and a zero wait.
 #
 # Runtime: host.dual, run by the test runner: `make test` interprets this file
 # with `loup-bootstrap test --no-parallel` (Stage0, source/ on LOUPPATH), one
 # test per `func test_*()`. It is not part of the binary.
 
 from debug.assert import (expect, expectEq);
-from commands.timeout import (digits, pad_left, countdown_line, seconds_left, ns_until_change,
+from commands.timeout import (digits, countdown_line, seconds_left, ns_until_change,
     countdown_text, run_timeout, NS_PER_SECOND, MSG_WAIT_FOREVER);
 
 func same(got: string, want: string, what: string): void {
@@ -23,10 +23,10 @@ func test_digits(): void {
     expectEq(digits(99999), 5, "99999");
 }
 
-func test_pad_left(): void {
-    same(pad_left("9", 2), " 9", "one space");
-    same(pad_left("10", 2), "10", "full width");
-    same(pad_left("123", 2), "123", "wider than the width");
+func test_number_is_padded_never_cut(): void {
+    same(countdown_line(9, 2), "Waiting for  9 seconds, press CTRL+C to quit ...", "one space");
+    same(countdown_line(10, 2), "Waiting for 10 seconds, press CTRL+C to quit ...", "full width");
+    same(countdown_line(123, 2), "Waiting for 123 seconds, press CTRL+C to quit ...", "wider than the width");
 }
 
 func test_countdown_line(): void {

@@ -18,7 +18,7 @@ from win.switches import (SwitchSpec, flag, required_value, parse_switches, pars
 
 # The range timeout accepts; -1 waits until the program is interrupted.
 pub const MIN_SECONDS: int = -1;
-pub const MAX_SECONDS: int = 99999;
+pub const MAX_SECONDS: int = 99_999;
 pub const WAIT_FOREVER: int = -1;
 
 pub const MSG_TYPE_HELP: string = "Type \"TIMEOUT /?\" for usage.";
@@ -37,8 +37,10 @@ pub func timeout_switches(): list[SwitchSpec] {
 }
 
 # Options are built here only: a struct constructed in several modules is
-# laid out differently by native builds.
-func make_options(help: bool, version: bool, seconds: int, nobreak: bool): Options {
+# laid out differently by native builds. Callers name the fields they set;
+# the others keep their defaults.
+func make_options(help: bool = false, version: bool = false, seconds: int = 0,
+    nobreak: bool = false): Options {
     return Options(help = help, version = version, seconds = seconds, nobreak = nobreak);
 }
 
@@ -79,14 +81,10 @@ func count_after_double_dash(argv: list[string]): int {
 # The seconds a value stands for, or None when it is not a whole number in
 # the accepted range.
 pub func parse_seconds(text: string): Option[int] {
-    let n = match parse_int_value(text) {
-        Some(v) => v,
-        None => MIN_SECONDS - 1,
+    return match parse_int_value(text) {
+        Some(n) if (n >= MIN_SECONDS and n <= MAX_SECONDS) => Some(n),
+        _ => None,
     };
-    if (n < MIN_SECONDS or n > MAX_SECONDS) {
-        return None;
-    }
-    return Some(n);
 }
 
 # The statement form of `match` (arms that return) is deliberate: a match
@@ -99,7 +97,7 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
         },
     };
     if (parsed.help or parsed.version) {
-        return Ok(make_options(parsed.help, parsed.version, 0, false));
+        return Ok(make_options(help = parsed.help, version = parsed.version));
     }
 
     # `/T 5` and a bare `5` are the same value, so both go into `values`;
@@ -146,5 +144,5 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
             return Err(MSG_INVALID_VALUE);
         },
     };
-    return Ok(make_options(false, false, seconds, nobreak));
+    return Ok(make_options(seconds = seconds, nobreak = nobreak));
 }
