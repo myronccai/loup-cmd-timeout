@@ -1,5 +1,13 @@
 @mode(host.dual)
 
+# Command-line driver of timeout: parses argv, answers `/?` and `--version`,
+# runs the wait, and turns an uncaught exception into `ERROR: message` and
+# ERRORLEVEL 1.
+#
+# Runtime: host.dual. Compiled into the native binary build/timeout by
+# `make build`; `loup run source/main.loup` interprets the same code, and
+# tests/app_test.loup calls run() directly under Stage0.
+
 from appinfo import (EXIT_OK, EXIT_FAILURE);
 from cli.args import (parse_args);
 from cli.usage import (usage, version_line);

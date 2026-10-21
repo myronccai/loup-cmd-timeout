@@ -1,10 +1,18 @@
 @mode(host.dual)
 
 # Command-line parsing for timeout, with the shared Windows switch parser
-# (win/switches.loup). The wait may be given as `/T 10`, `/T:10` or just
-# `10`; `-1` is a value (wait until CTRL+C), not a switch. Usage errors use
-# the wording of Windows' command-line tools, each followed by
+# (win/switches.loup). The wait may be given as `/T 10`, `/T:10` or just `10`;
+# `-1` is a value (wait until CTRL+C), not a switch. Usage errors use the
+# wording of Windows' command-line tools, each followed by
 # `Type "TIMEOUT /?" for usage.`; an out-of-range value has its own message.
+#
+# Runtime: host.dual. Compiled into the native binary build/timeout by
+# `make build`; `loup run source/main.loup` interprets the same code.
+#
+# Structure: parse_args() lets parse_switches() split switches from operands,
+# then collects the value from `/T` and the operands (each switch at most
+# once, unknown options before `--` rejected), insists on exactly one value,
+# and checks its range with parse_seconds().
 
 from win.switches import (SwitchSpec, flag, required_value, parse_switches, parse_int_value);
 
@@ -94,6 +102,8 @@ pub func parse_args(argv: list[string]): Result[Options, string] {
         return Ok(make_options(parsed.help, parsed.version, 0, false));
     }
 
+    # `/T 5` and a bare `5` are the same value, so both go into `values`;
+    # Windows rejects a repeated switch with its own message.
     var values: list[string] = [];
     var t_seen = false;
     var nobreak = false;

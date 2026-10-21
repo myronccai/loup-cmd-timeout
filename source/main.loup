@@ -1,7 +1,14 @@
 @mode(host.dual)
 
-# Entry point. Keep this file thin: all behaviour lives in cli.app.run so
-# that tests can call it with an argument list.
+# timeout: entry point of the Windows TIMEOUT command for Linux. Keep this
+# file thin: all behaviour lives in cli.app.run so that tests can call it with
+# an argument list.
+#
+# Runtime: host.dual. The entry point: main() gets the command line. The same
+# source runs two ways: `make run ARGS="..."` interprets it with
+# `loup run source/main.loup`, and `make build` compiles it with the rest of
+# source/ into the native binary build/timeout, which `make e2e`
+# (tests/e2e.sh) and CI run.
 
 from cli.app import (run);
 

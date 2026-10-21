@@ -1,5 +1,13 @@
 @mode(host.dual)
 
+# Unit tests for timeout's argument parsing (cli/args.loup): every way to give
+# the value, `/NOBREAK`, help and version, telling options from negative
+# numbers, the accepted range, and the exact wording of each usage error.
+#
+# Runtime: host.dual, run by the test runner: `make test` interprets this file
+# with `loup-bootstrap test --no-parallel` (Stage0, source/ on LOUPPATH), one
+# test per `func test_*()`. It is not part of the binary.
+
 from debug.assert import (expect, expectEq);
 from cli.args import (parse_args, timeout_switches, looks_like_option, parse_seconds,
     syntax_error, MSG_INVALID_VALUE, MSG_TYPE_HELP);

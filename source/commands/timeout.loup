@@ -6,9 +6,21 @@
 # when the wall clock is changed: each pass sleeps until the shown number
 # should next change, then redraws the line.
 #
-# A key press does not end the wait (Loup 1.26.0 can only read standard
-# input as a whole, roadmap constraint T2), so every wait behaves like
-# /NOBREAK: CTRL+C (SIGINT) is the only way to stop early.
+# Runtime: host.dual. Compiled into the native binary build/timeout by
+# `make build`; `loup run source/main.loup` interprets the same code. Natively
+# `print` writes at once (no buffering), so the countdown is live on a
+# terminal. The unit tests check the pure helpers and a zero wait under
+# Stage0; tests/e2e.sh times real waits and ends the long ones with GNU
+# timeout.
+#
+# A key press does not end the wait (Loup 1.26.0 can only read standard input
+# as a whole, roadmap constraint T2), so every wait behaves like /NOBREAK:
+# CTRL+C (SIGINT) is the only way to stop early.
+#
+# Structure: the text of the countdown (digits, pad_left, countdown_line, and
+# countdown_text, the whole output at once for the tests); the clock
+# arithmetic (seconds_left, ns_until_change); then the two waits,
+# wait_forever() for `/T -1` and run_timeout().
 
 from appinfo import (EXIT_OK);
 from cli.args import (WAIT_FOREVER);
@@ -101,6 +113,8 @@ pub func run_timeout(seconds: int): int {
     let start = monotonicNs();
     print("\n" + countdown_line(seconds, width));
     var shown = seconds;
+    # Every pass measures the time left from `start`, not from the last
+    # wake-up, so a late wake-up skips a number instead of adding drift.
     while (shown > 0) {
         let left = total - Duration.ofNanos(monotonicNs() - start);
         let left_ns = left.totalNanoseconds();
